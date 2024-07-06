@@ -37,6 +37,8 @@
 static int stopped = 0;
 static uint64_t optsdone = 0;
 
+static unsigned long long hMod = NULL;
+
 typedef struct ossl_init_stop_st OPENSSL_INIT_STOP;
 struct ossl_init_stop_st {
     void (*handler)(void);
@@ -138,10 +140,18 @@ DEFINE_RUN_ONCE_STATIC(ossl_init_load_crypto_nodelete)
         HMODULE handle = NULL;
         BOOL ret;
 
-        /* We don't use the DSO route for WIN32 because there is a better way */
-        ret = GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
-                                | GET_MODULE_HANDLE_EX_FLAG_PIN,
-                                (void *)&base_inited, &handle);
+        if (hMod != NULL)
+        {
+            handle = (HMODULE)hMod;
+            ret = TRUE;
+        }
+        else
+        {
+            /* We don't use the DSO route for WIN32 because there is a better way */
+            ret = GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                                    | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                                    (void *)&base_inited, &handle);
+        }
 
         OSSL_TRACE1(INIT,
                     "ossl_init_load_crypto_nodelete: "
@@ -467,6 +477,12 @@ void OPENSSL_cleanup(void)
     base_inited = 0;
 }
 
+void OPENSSL_set_handle(unsigned long long module)
+{
+    if (module != NULL)
+        hMod = module;
+}
+
 /*
  * If this function is called with a non NULL settings value then it must be
  * called prior to any threads making calls to any OpenSSL functions,
@@ -682,13 +698,21 @@ int OPENSSL_atexit(void (*handler)(void))
 
         handlersym.func = handler;
 
-        /*
-         * We don't use the DSO route for WIN32 because there is a better
-         * way
-         */
-        ret = GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
-                                | GET_MODULE_HANDLE_EX_FLAG_PIN,
-                                handlersym.sym, &handle);
+        if (hMod != NULL)
+        {
+            handle = (HMODULE)hMod;
+            ret = TRUE;
+        }
+        else
+        {
+            /*
+            * We don't use the DSO route for WIN32 because there is a better
+            * way
+            */
+            ret = GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                                    | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                                    handlersym.sym, &handle);
+        }
 
         if (!ret)
             return 0;
